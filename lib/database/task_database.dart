@@ -2,6 +2,8 @@ import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 import '../models/task.dart';
 import '../models/subtask.dart';
+import '../models/recurring_task.dart';
+
 
 class TaskDatabase {
   static final TaskDatabase instance = TaskDatabase._init();
@@ -17,8 +19,9 @@ class TaskDatabase {
 
     _database = await openDatabase(
       path,
-      version: 1,
+      version: 2,
       onCreate: _createDb,
+      onUpgrade: _upgradeDb,
     );
 
     return _database!;
@@ -50,6 +53,18 @@ class TaskDatabase {
       CREATE TABLE app_state (
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE recurring_tasks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        description TEXT NOT NULL,
+        difficulty TEXT NOT NULL,
+        recurrenceType TEXT NOT NULL,
+        recurrenceValue INTEGER NOT NULL,
+        lastGeneratedDate TEXT
       )
     ''');
   }
@@ -243,4 +258,100 @@ class TaskDatabase {
     final db = await database;
     await db.delete('subtasks', where: 'id = ?', whereArgs: [id]);
   }
+  Future<void> _upgradeDb(Database db, int oldVersion, int newVersion) async {
+  if (oldVersion < 2) {
+    await db.execute('''
+      CREATE TABLE recurring_tasks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        description TEXT NOT NULL,
+        difficulty TEXT NOT NULL,
+        recurrenceType TEXT NOT NULL,
+        recurrenceValue INTEGER NOT NULL,
+        lastGeneratedDate TEXT
+      )
+    ''');
+  }
+}
+
+Future<List<RecurringTask>> getRecurringTasks() async {
+  final db = await database;
+
+  final result = await db.query(
+    'recurring_tasks',
+    orderBy: 'id DESC',
+  );
+
+  return result.map(RecurringTask.fromMap).toList();
+}
+
+Future<int> insertRecurringTask(RecurringTask task) async {
+  final db = await database;
+  return db.insert('recurring_tasks', task.toMap());
+}
+
+Future<void> updateRecurringTask(RecurringTask task) async {
+  final db = await database;
+
+  await db.update(
+    'recurring_tasks',
+    task.toMap(),
+    where: 'id = ?',
+    whereArgs: [task.id],
+  );
+}
+
+Future<void> deleteRecurringTask(int id) async {
+  final db = await database;
+
+  await db.delete(
+    'recurring_tasks',
+    where: 'id = ?',
+    whereArgs: [id],
+  );
+}
+
+Future<void> generateRecurringTasksIfNeeded() async {
+  final recurringTasks = await getRecurringTasks();
+  final today = DateTime.now();
+  final todayDb = formatDbDate(today);
+
+  for (final recurringTask in recurringTasks) {
+    if (recurringTask.lastGeneratedDate == todayDb) continue;
+
+    final shouldGenerate = _shouldGenerateRecurringTask(recurringTask, today);
+
+    if (!shouldGenerate) continue;
+
+    await insertTask(
+      Task(
+        name: recurringTask.name,
+        description: recurringTask.description,
+        difficulty: recurringTask.difficulty,
+        date: today,
+        status: 'actual',
+      ),
+    );
+
+    await updateRecurringTask(
+      recurringTask.copyWith(lastGeneratedDate: todayDb),
+    );
+  }
+}
+
+bool _shouldGenerateRecurringTask(RecurringTask task, DateTime today) {
+  if (task.recurrenceType == 'daily') {
+    return true;
+  }
+
+  if (task.recurrenceType == 'weekly') {
+    return today.weekday == task.recurrenceValue;
+  }
+
+  if (task.recurrenceType == 'monthly') {
+    return today.day == task.recurrenceValue;
+  }
+
+  return false;
+}
 }

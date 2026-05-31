@@ -4,6 +4,7 @@ import '../database/task_database.dart';
 import 'tabs/actual_tab.dart';
 import 'tabs/done_tab.dart';
 import 'tabs/incoming_tab.dart';
+import 'tabs/recurring_tab.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -19,7 +20,7 @@ class _HomeScreenState extends State<HomeScreen> {
   int validValue = 0;
   int remainValue = 0;
 
-  final List<String> _tabs = ['Done', 'Actual', 'Incoming'];
+  final List<String> _tabs = ['Done', 'Actual', 'Incoming', 'Repeat'];
 
   @override
   void initState() {
@@ -30,6 +31,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _prepareApp() async {
     await TaskDatabase.instance.cleanupOldDoneTasks();
     await TaskDatabase.instance.resetDailyCounterIfNeeded();
+    await TaskDatabase.instance.generateRecurringTasksIfNeeded();
     await _refreshHeader();
   }
 
@@ -78,6 +80,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   DoneTab(onDataChanged: _refreshHeader),
                   ActualTab(onDataChanged: _refreshHeader),
                   IncomingTab(onDataChanged: _refreshHeader),
+                  RecurringTab(onDataChanged: _refreshHeader),
                 ],
               ),
             ),
@@ -97,7 +100,7 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Row(
         children: [
           SizedBox(
-            width: 136,
+            width: 176,
             height: 27,
             child: CustomPaint(
               painter: _SegmentBorderPainter(),
@@ -174,7 +177,7 @@ class _SegmentBorderPainter extends CustomPainter {
 
     canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), borderPaint);
 
-    final double segmentWidth = size.width / 3;
+    final double segmentWidth = size.width / 4;
 
     canvas.drawLine(
       Offset(segmentWidth + 5, 0),
@@ -183,8 +186,8 @@ class _SegmentBorderPainter extends CustomPainter {
     );
 
     canvas.drawLine(
-      Offset(segmentWidth * 2 + 5, 0),
-      Offset(segmentWidth * 2 - 5, size.height),
+      Offset(segmentWidth * 3 + 5, 0),
+      Offset(segmentWidth * 3 - 5, size.height),
       linePaint,
     );
   }
